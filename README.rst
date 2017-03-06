@@ -46,3 +46,10 @@ you can use the following:
        inverted = client.map(lambda x: -x, incremented)
        outputs = client.gather(inverted)
    print(outputs)  # prints [-1, .. , -100]
+
+Installation
+------------
+
+Via pip::
+
+    pip install git+https://gitlab.kwant-project.org/slavoutich/slurmified.git --upgrade
