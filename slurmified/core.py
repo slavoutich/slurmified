@@ -89,6 +89,7 @@ class Cluster:
         self._wait_timeout = timeout
         self._wait_timestep = 1
 
+        self.workdir = os.getcwd()
         self._worker_exec = os.path.join(sys.exec_prefix, 'bin', 'dask-worker')
         logger.info("Using dask-worker executable '{exe}'".
                     format(exe=self._worker_exec))
@@ -136,6 +137,7 @@ class Cluster:
         )
         s = slurmpy.Slurm(self._task_name, slurm_kwargs)
         self._jobid = s.run(
+            "cd {}\n".format(self.workdir) +
             " ".join((self._worker_exec,
                       "--nthreads", str(self._nthreads),
                       "--nprocs", "1",
