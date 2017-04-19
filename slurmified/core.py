@@ -37,7 +37,8 @@ class Cluster:
                     format(addr=self.scheduler_address))
 
     def __init__(self, slurm_kwargs=None, hostname=None, task_name=None,
-                 timeout=10., **kwargs):
+                 nanny=False, bokeh=False, bokeh_port=None, timeout=10.,
+                 **kwargs):
         """
         Dask.Distribued workers launched via SLURM workload manager
 
@@ -52,6 +53,14 @@ class Cluster:
         task_name: string or None
             Name of the job, passed to SLURM. If None, defaults to
             'dask-workers'.
+        nanny: boolean
+            Start Dask workers in nanny process for management.
+            Default is False.
+        bokeh: boolean
+            Whether to launch Bokeh Web UI
+            Default is False.
+        bokeh_port: None or int
+            Bokeh port for dask-worker. None means default.
         timeout: float
             Default time to wait until workers start
             (see ``self.start_workers``).
@@ -89,9 +98,13 @@ class Cluster:
         self._wait_timeout = timeout
         self._wait_timestep = 1
 
+        self.workdir = os.getcwd()
         self._worker_exec = os.path.join(sys.exec_prefix, 'bin', 'dask-worker')
         logger.info("Using dask-worker executable '{exe}'".
                     format(exe=self._worker_exec))
+        self._nanny = nanny
+        self._bokeh = bokeh
+        self._bokeh_port = bokeh_port
 
     @property
     def scheduler(self):
@@ -136,10 +149,15 @@ class Cluster:
         )
         s = slurmpy.Slurm(self._task_name, slurm_kwargs)
         self._jobid = s.run(
+            "cd {}\n".format(self.workdir) +
             " ".join((self._worker_exec,
                       "--nthreads", str(self._nthreads),
                       "--nprocs", "1",
                       "--reconnect",
+                      "--nanny" if self._nanny else "--no-nanny",
+                      "--bokeh" if self._bokeh else "--no-bokeh",
+                      ("--bokeh-port {}".format(self._bokeh_port) if
+                       self._bokeh_port is not None else ""),
                       self.scheduler_address))
         )
         if self._wait_workers_start(n_min or n, timeout):
