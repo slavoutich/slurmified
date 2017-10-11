@@ -38,7 +38,7 @@ class Cluster:
 
     def __init__(self, slurm_kwargs=None, hostname=None, task_name=None,
                  nanny=True, bokeh=True, bokeh_port=None, timeout=10.,
-                 **kwargs):
+                 extra_path=None, **kwargs):
         """
         Dask.Distribued workers launched via SLURM workload manager
 
@@ -64,6 +64,9 @@ class Cluster:
         timeout: float
             Default time to wait until workers start
             (see ``self.start_workers``).
+        extra_path: None or str or List of str
+            Extra module path values, that are injected to the workers via
+            PYTHONPATH environment variable
 
         **kwargs: dict
             Keyword arguments, passed directly to 'distributed.LocalCluster'
@@ -98,13 +101,16 @@ class Cluster:
         self._wait_timeout = timeout
         self._wait_timestep = 1
 
-        self.workdir = os.getcwd()
         self._worker_exec = os.path.join(sys.exec_prefix, 'bin', 'dask-worker')
         logger.info("Using dask-worker executable '{exe}'".
                     format(exe=self._worker_exec))
         self._nanny = nanny
         self._bokeh = bokeh
         self._bokeh_port = bokeh_port
+        if isinstance(extra_path, str):
+            self._extra_path = [extra_path]
+        else:
+            self._extra_path = extra_path
 
     @property
     def scheduler(self):
@@ -147,9 +153,19 @@ class Cluster:
             self._slurm_kwargs, kwargs or {},
             {"array": "0-{}".format(n-1), "cpus-per-task": self._nthreads}
         )
+        if self._extra_path:
+            pythonpath_cmd = (
+                "[[ -z \"$PYTHONPATH\" ]] && "
+                "export PYTHONPATH=\"{new_entries}\" || "
+                "export PYTHONPATH=\"{new_entries}:$PYTHONPATH\""
+                .format(new_entries=":".join(self._extra_path))
+            )
+        else:
+            pythonpath_cmd = ""
+
         s = slurmpy.Slurm(self._task_name, slurm_kwargs)
         self._jobid = s.run(
-            "cd {}\n".format(self.workdir) +
+            pythonpath_cmd + "\n" +
             " ".join((self._worker_exec,
                       "--nthreads", str(self._nthreads),
                       "--nprocs", "1",
