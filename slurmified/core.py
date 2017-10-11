@@ -37,7 +37,7 @@ class Cluster:
                     format(addr=self.scheduler_address))
 
     def __init__(self, slurm_kwargs=None, hostname=None, task_name=None,
-                 nanny=False, bokeh=False, bokeh_port=None, timeout=10.,
+                 nanny=True, bokeh=True, bokeh_port=None, timeout=10.,
                  **kwargs):
         """
         Dask.Distribued workers launched via SLURM workload manager
@@ -55,10 +55,10 @@ class Cluster:
             'dask-workers'.
         nanny: boolean
             Start Dask workers in nanny process for management.
-            Default is False.
+            Default is True.
         bokeh: boolean
             Whether to launch Bokeh Web UI
-            Default is False.
+            Default is True.
         bokeh_port: None or int
             Bokeh port for dask-worker. None means default.
         timeout: float
