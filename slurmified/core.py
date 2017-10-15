@@ -7,9 +7,11 @@ import slurmpy
 import subprocess
 
 from distributed import LocalCluster
-from distributed.utils import sync
+from distributed.utils import sync, ignoring
+from distributed.core import CommClosedError
 from time import time, sleep
 from toolz import merge
+from tornado.gen import TimeoutError
 
 logger = logging.getLogger(__name__)
 
@@ -211,10 +213,10 @@ class Cluster:
     def stop_workers(self):
         """ Stop running workers. """
         try:
-            sync(loop=self._local_cluster.loop,
-                 func=self.scheduler.retire_workers,
-                 workers=self.scheduler.workers_to_close(),
-                 remove=True)
+            with ignoring(TimeoutError, CommClosedError, OSError):
+                sync(loop=self._local_cluster.loop,
+                     func=self.scheduler.retire_workers,
+                     remove=True)
         finally:
             if self._jobid:
                 try:
