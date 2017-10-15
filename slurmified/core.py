@@ -1,5 +1,6 @@
 import logging
 import os
+import shutil
 import sys
 import socket
 import slurmpy
@@ -38,35 +39,40 @@ class Cluster:
 
     def __init__(self, slurm_kwargs=None, hostname=None, task_name=None,
                  nanny=True, bokeh=True, bokeh_port=None, timeout=10.,
-                 extra_path=None, **kwargs):
+                 extra_path=None, tmp_dir=None, **kwargs):
         """
         Dask.Distribued workers launched via SLURM workload manager
 
         Parameters
         ----------
-        slurm_kwargs: dict
+        slurm_kwargs : dict
             A dictionary with arguments, passed to SLURM batch script
             (see Examples). If None, defaults to empty dictionary.
-        hostname: None or string
+        hostname : None or string
             Hostname of a controller node, visible by other SLURM nodes.
             If None, determined automatically through 'socket.gethostname()'.
-        task_name: string or None
+        task_name : string or None
             Name of the job, passed to SLURM. If None, defaults to
             'dask-workers'.
-        nanny: boolean
+        nanny : boolean
             Start Dask workers in nanny process for management.
             Default is True.
-        bokeh: boolean
+        bokeh : boolean
             Whether to launch Bokeh Web UI
             Default is True.
         bokeh_port: None or int
             Bokeh port for dask-worker. None means default.
-        timeout: float
+        timeout : float
             Default time to wait until workers start
             (see ``self.start_workers``).
-        extra_path: None or str or List of str
+        extra_path : None or str or List of str
             Extra module path values, that are injected to the workers via
             PYTHONPATH environment variable
+        tmp_dir : str or None
+            Directory for temporary files. If not specified, defaults to
+            "slurmified_files" in working directory.
+            For now it is assumed, that it is accessible from all nodes of a
+            cluster. If you need more clever behaviour, please file a bug.
 
         **kwargs: dict
             Keyword arguments, passed directly to 'distributed.LocalCluster'
@@ -111,6 +117,13 @@ class Cluster:
             self._extra_path = [extra_path]
         else:
             self._extra_path = extra_path
+
+        self._tmp_dir = tmp_dir or os.path.abspath("slurmified_files")
+        if not os.path.exists(self._tmp_dir):
+            os.makedirs(self._tmp_dir)
+            self._remove_tmp_dir = True
+        else:
+            self._remove_tmp_dir = False
 
     @property
     def scheduler(self):
@@ -163,7 +176,8 @@ class Cluster:
         else:
             pythonpath_cmd = ""
 
-        s = slurmpy.Slurm(self._task_name, slurm_kwargs)
+        s = slurmpy.Slurm(self._task_name, slurm_kwargs=slurm_kwargs,
+                          scripts_dir=self._tmp_dir)
         self._jobid = s.run(
             pythonpath_cmd + "\n" +
             " ".join((self._worker_exec,
@@ -173,7 +187,8 @@ class Cluster:
                       "--nanny" if self._nanny else "--no-nanny",
                       "--bokeh" if self._bokeh else "--no-bokeh",
                       ("--bokeh-port {}".format(self._bokeh_port) if
-                       self._bokeh_port is not None else ""),
+                       self._bokeh_port else ""),
+                      "--local-directory {}".format(self._tmp_dir),
                       self.scheduler_address))
         )
         if self._wait_workers_start(n_min or n, timeout):
@@ -224,6 +239,10 @@ class Cluster:
             self.stop_workers()
         self._local_cluster.close()
 
+        if self._remove_tmp_dir:
+            shutil.rmtree(self._tmp_dir)
+            self._remove_tmp_dir = False
+
     def __enter__(self):
         return self
 
@@ -231,7 +250,5 @@ class Cluster:
         self.close()
 
     def __del__(self):
-        try:
-            self.close()
-        except:
-            pass
+        self.close()
+
