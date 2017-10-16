@@ -41,11 +41,26 @@ you can use the following:
        'time': '1-00:00:00'
    }
    inputs = list(range(0, 100))
-   with Client(Cluster(slurm_kwargs).start_workers(10)) as client:
-       incremented = client.map(lambda x: x+1, inputs)
-       inverted = client.map(lambda x: -x, incremented)
-       outputs = client.gather(inverted)
+   with Cluster(slurm_kwargs).start_workers(10) as cluster:
+       with Client(cluster) as client:
+           incremented = client.map(lambda x: x+1, inputs)
+           inverted = client.map(lambda x: -x, incremented)
+           outputs = client.gather(inverted)
    print(outputs)  # prints [-1, .. , -100]
+
+Quickly map function over arguments list:
+
+.. code-block:: python
+
+   from slurmified import map_interactive
+   slurm_kwargs = {
+       'mem-per-cpu': '100',
+       'time': '1-00:00:00'
+   }
+   inputs = list(range(0, 100))
+   map_func = map_interactive(10, slurm_kwargs=slurm_kwargs)
+   outputs = map_func(lambda x: x+1, inputs)
+   print(outputs)  # prints [1, .. , 100]
 
 Installation
 ------------
