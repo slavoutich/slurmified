@@ -4,7 +4,7 @@ from os.path import exists
 from setuptools import setup
 
 setup(name='slurmified',
-      version='0.1.1.dev',
+      version='0.1.1',
       description='Dask.Didtributed on SLURM-managed clusters',
       url='https://gitlab.kwant-project.org/slavoutich/slurmified/',
       maintainer='Viacheslav Ostroukh',
