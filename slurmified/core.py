@@ -190,7 +190,7 @@ class Cluster:
                       "--bokeh" if self._bokeh else "--no-bokeh",
                       ("--bokeh-port {}".format(self._bokeh_port) if
                        self._bokeh_port else ""),
-                      "--local-directory {}".format(self._tmp_dir),
+                      "--local-directory \"{}\"".format(self._tmp_dir),
                       self.scheduler_address))
         )
         if self._wait_workers_start(n_min or n, timeout):
