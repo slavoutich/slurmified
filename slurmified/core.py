@@ -6,9 +6,9 @@ import socket
 import slurmpy
 import subprocess
 
+from contextlib import suppress
 from distributed import LocalCluster
-from distributed.utils import sync, ignoring
-from distributed.core import CommClosedError
+from distributed.utils import sync
 from time import time, sleep
 from toolz import merge
 from tornado.gen import TimeoutError
@@ -213,7 +213,7 @@ class Cluster:
     def stop_workers(self):
         """ Stop running workers. """
         try:
-            with ignoring(TimeoutError, CommClosedError, OSError):
+            with suppress(Exception):
                 sync(loop=self._local_cluster.loop,
                      func=self.scheduler.retire_workers,
                      remove=True)
