@@ -67,12 +67,4 @@ Installation
 
 Via pip::
 
-    pip install git+https://gitlab.kwant-project.org/slavoutich/slurmified.git --upgrade
-
-or::
-
-    pip install git+https://github.com/slavoutich/slurmified.git --upgrade
-
-or::
-
-    pip install git+https://gitlab.com/slavoutich/slurmified.git --upgrade
+    pip install git+https://gitlab.com/slavoutich/slurmified.git
