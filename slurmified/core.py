@@ -5,15 +5,23 @@ import sys
 import socket
 import slurmpy
 import subprocess
+import warnings
 
-from contextlib import suppress
+from contextlib import suppress, redirect_stderr
 from distributed import LocalCluster
 from distributed.utils import sync
 from time import time, sleep
 from toolz import merge
-from tornado.gen import TimeoutError
 
 logger = logging.getLogger(__name__)
+
+
+class _Sink:
+    def write(self, *_): pass
+
+    def writelines(self, *_): pass
+
+    def clone(self, *_): pass
 
 
 class Cluster:
@@ -43,18 +51,18 @@ class Cluster:
                  nanny=True, bokeh=True, bokeh_port=None, timeout=10.,
                  extra_path=None, tmp_dir=None, **kwargs):
         """
-        Dask.Distribued workers launched via SLURM workload manager
+        Dask.Distribued workers launched via Slurm workload manager
 
         Parameters
         ----------
         slurm_kwargs : dict
-            A dictionary with arguments, passed to SLURM batch script
+            A dictionary with arguments, passed to Slurm batch script
             (see Examples). If None, defaults to empty dictionary.
         hostname : None or string
-            Hostname of a controller node, visible by other SLURM nodes.
+            Hostname of a controller node, visible by other Slurm nodes.
             If None, determined automatically through 'socket.gethostname()'.
         task_name : string or None
-            Name of the job, passed to SLURM. If None, defaults to
+            Name of the job, passed to Slurm. If None, defaults to
             'dask-workers'.
         nanny : boolean
             Start Dask workers in nanny process for management.
@@ -141,7 +149,7 @@ class Cluster:
         return len(self.scheduler.workers)
 
     def start_workers(self, n=1, n_min=None, timeout=None, **kwargs):
-        """Start Dask workers via SLURM batch script. If workers are started
+        """Start Dask workers via Slurm batch script. If workers are started
         already, they are terminated. Returns self.
 
         Parameters
@@ -160,7 +168,7 @@ class Cluster:
             used (provided in constructor).
         **kwargs: dict
             Dictionary with strings as keys and values, can be used to override
-            SLURM kwargs, passed to the constructor.
+            Slurm kwargs, passed to the constructor.
         """
         if self._jobid:
             self.stop_workers()
@@ -180,19 +188,23 @@ class Cluster:
 
         s = slurmpy.Slurm(self._task_name, slurm_kwargs=slurm_kwargs,
                           scripts_dir=self._tmp_dir)
-        self._jobid = s.run(
-            pythonpath_cmd + "\n" +
-            " ".join((self._worker_exec,
-                      "--nthreads", str(self._nthreads),
-                      "--nprocs", "1",
-                      "--reconnect",
-                      "--nanny" if self._nanny else "--no-nanny",
-                      "--bokeh" if self._bokeh else "--no-bokeh",
-                      ("--bokeh-port {}".format(self._bokeh_port) if
-                       self._bokeh_port else ""),
-                      "--local-directory \"{}\"".format(self._tmp_dir),
-                      self.scheduler_address))
-        )
+        # This command puts Jobid to stderr, that is likely nice to suppress
+        with redirect_stderr(_Sink):
+            self._jobid = s.run(
+                pythonpath_cmd + "\n" +
+                " ".join((
+                    self._worker_exec,
+                    "--nthreads", str(self._nthreads),
+                    "--nprocs", "1",
+                    "--reconnect",
+                    "--nanny" if self._nanny else "--no-nanny",
+                    "--bokeh" if self._bokeh else "--no-bokeh",
+                    ("--bokeh-port {}".format(self._bokeh_port)
+                     if self._bokeh_port else ""),
+                    "--local-directory \"{}\"".format(self._tmp_dir),
+                    self.scheduler_address
+                ))
+            )
         if self._wait_workers_start(n_min or n, timeout):
             m = ("Started {n} workers, job number {jobid}"
                  .format(n=self.n_workers, jobid=self._jobid))
@@ -212,24 +224,28 @@ class Cluster:
 
     def stop_workers(self):
         """ Stop running workers. """
-        try:
+        # Sometimes retire_workers command throws a lot of exceptions, that
+        # also vary from update to update, so we just suppress everything here.
+        # Anyway we just kill all the workers later using Slurm,
+        # so it is just an attempt to do this in polite manner.
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
             with suppress(Exception):
                 sync(loop=self._local_cluster.loop,
                      func=self.scheduler.retire_workers,
                      remove=True)
-        finally:
-            if self._jobid:
-                try:
-                    subprocess.check_call(("scancel", str(self._jobid)))
-                except subprocess.CalledProcessError as ex:
-                    m = ("scancel returned non-zero exit status {code} while "
-                         "stopping Slurm job number {jobid} for workers. "
-                         "You should check manually whether they are "
-                         "terminated successfully."
-                         .format(code=ex.returncode, jobid=self._jobid))
-                    logger.error(m)
-                finally:
-                    self._jobid = None
+        if self._jobid:
+            try:
+                subprocess.check_call(("scancel", str(self._jobid)))
+            except subprocess.CalledProcessError as ex:
+                m = ("scancel returned non-zero exit status {code} while "
+                     "stopping Slurm job number {jobid} for workers. "
+                     "You should check manually whether they are "
+                     "terminated successfully."
+                     .format(code=ex.returncode, jobid=self._jobid))
+                logger.error(m)
+            finally:
+                self._jobid = None
 
     def _start(self):
         return self._local_cluster._start()
